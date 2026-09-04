@@ -492,6 +492,24 @@ def fetch_data(symbol: str, tf: TimeframeConfig) -> Optional[pd.DataFrame]:
             if not required_cols.issubset(df.columns):
                 raise ValueError(f"missing expected columns, got {list(df.columns)}")
 
+            # Yahoo/yfinance sometimes appends a same-session bar before that
+            # session's OHLC data has fully settled (very common in the
+            # minutes right after market close, or under throttling) — its
+            # Close (and often Open/High/Low) come back NaN even though the
+            # row itself isn't dropped by dropna(how="all") above. Trim any
+            # such incomplete rows off the TAIL so the scanner falls back to
+            # the last fully-formed candle instead of failing the whole
+            # symbol with a misleading "NaN/short data" error.
+            trimmed = 0
+            while len(df) and pd.isna(df["Close"].iloc[-1]):
+                df = df.iloc[:-1]
+                trimmed += 1
+            if trimmed:
+                logger.debug("Trimmed %d incomplete trailing bar(s) for %s [%s/%s]",
+                            trimmed, symbol, tf.interval, tf.period)
+            if df.empty:
+                raise ValueError("no rows with a valid Close after trimming incomplete tail")
+
             _CACHE[cache_key] = df
             return df
 
