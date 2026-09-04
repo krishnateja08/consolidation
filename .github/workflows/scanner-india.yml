@@ -1,0 +1,60 @@
+name: India Consolidation Scanner
+
+on:
+  schedule:
+    # 10:15 UTC = 3:45pm IST (after the NSE market close), Mon-Fri.
+    # Adjust to taste — GitHub Actions cron is always in UTC.
+    - cron: "15 10 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      timeframe:
+        description: "Which timeframe(s) to scan"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - daily
+          - hourly
+          - 15m
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install \
+            "yfinance>=0.2.40" \
+            "pandas>=2.0" \
+            "numpy>=1.24" \
+            "requests>=2.31" \
+            "jinja2>=3.1"
+
+      - name: Run scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_ENABLED: "true"
+          TELEGRAM_TOP_N_PER_INDEX: "3"
+        run: |
+          python consolidation_scanner_india.py --timeframe "${{ inputs.timeframe || 'all' }}"
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-consolidation-report-india
+          path: output/stock_consolidation_report_india.html
+          retention-days: 30
